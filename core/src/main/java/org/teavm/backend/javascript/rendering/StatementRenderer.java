@@ -227,6 +227,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
     @Override
     public void visit(AssignmentStatement statement) throws RenderingException {
         writer.emitStatementStart();
+        emitCoverageStatement(statement.getLocation());
         if (statement.getLocation() != null) {
             pushLocation(statement.getLocation());
         }
@@ -240,7 +241,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
             writer.ws().append("=").ws();
         }
         precedence = Precedence.COMMA;
-        statement.getRightValue().acceptVisitor(this);
+        renderExpression(statement.getRightValue());
         writer.append(";").softNewLine();
         if (statement.isAsync()) {
             emitSuspendChecker();
@@ -270,7 +271,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
             }
             writer.append("if").ws().append("(");
             precedence = Precedence.COMMA;
-            statement.getCondition().acceptVisitor(this);
+            renderExpression(statement.getCondition());
             if (statement.getCondition().getLocation() != null) {
                 popLocation();
             }
@@ -317,7 +318,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
     }
 
     private boolean isSimpleIfContent(List<Statement> statements) {
-        if (statements.size() != 1) {
+        if (context.getCoverage() != null || statements.size() != 1) {
             return false;
         }
 
@@ -336,7 +337,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
         }
         writer.append("switch").ws().append("(");
         precedence = Precedence.min();
-        statement.getValue().acceptVisitor(this);
+        renderExpression(statement.getValue());
         if (statement.getValue().getLocation() != null) {
             popLocation();
         }
@@ -377,7 +378,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
         writer.ws().append("(");
         if (statement.getCondition() != null) {
             precedence = Precedence.min();
-            statement.getCondition().acceptVisitor(this);
+            renderExpression(statement.getCondition());
         } else {
             writer.append("true");
         }
@@ -425,6 +426,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
     @Override
     public void visit(BreakStatement statement) {
         writer.emitStatementStart();
+        emitCoverageStatement(statement.getLocation());
         if (statement.getLocation() != null) {
             pushLocation(statement.getLocation());
         }
@@ -441,6 +443,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
     @Override
     public void visit(ContinueStatement statement) {
         writer.emitStatementStart();
+        emitCoverageStatement(statement.getLocation());
         if (statement.getLocation() != null) {
             pushLocation(statement.getLocation());
         }
@@ -457,6 +460,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
     @Override
     public void visit(ReturnStatement statement) {
         writer.emitStatementStart();
+        emitCoverageStatement(statement.getLocation());
         if (statement.getLocation() != null) {
             pushLocation(statement.getLocation());
         }
@@ -464,7 +468,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
         if (statement.getResult() != null) {
             writer.append(' ');
             precedence = Precedence.min();
-            statement.getResult().acceptVisitor(this);
+            renderExpression(statement.getResult());
         }
         writer.append(";").softNewLine();
         if (statement.getLocation() != null) {
@@ -475,12 +479,13 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
     @Override
     public void visit(ThrowStatement statement) {
         writer.emitStatementStart();
+        emitCoverageStatement(statement.getLocation());
         if (statement.getLocation() != null) {
             pushLocation(statement.getLocation());
         }
         writer.appendFunction("$rt_throw").append("(");
         precedence = Precedence.min();
-        statement.getException().acceptVisitor(this);
+        renderExpression(statement.getException());
         writer.append(");").softNewLine();
         if (statement.getLocation() != null) {
             popLocation();
@@ -522,8 +527,8 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
             visitBinary(BinaryOperation.OR, "|", () -> visitBinary(expr, op, false),
                     () -> writer.append("0"));
         } else {
-            visitBinary(expr.getOperation(), op, () -> expr.getFirstOperand().acceptVisitor(this),
-                    () -> expr.getSecondOperand().acceptVisitor(this));
+            visitBinary(expr.getOperation(), op, () -> renderExpression(expr.getFirstOperand()),
+                    () -> renderExpression(expr.getSecondOperand()));
         }
         if (expr.getLocation() != null) {
             popLocation();
@@ -624,10 +629,10 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
         writer.appendFunction(function);
         writer.append('(');
         precedence = Precedence.min();
-        expr.getFirstOperand().acceptVisitor(this);
+        renderExpression(expr.getFirstOperand());
         writer.append(",").ws();
         precedence = Precedence.min();
-        expr.getSecondOperand().acceptVisitor(this);
+        renderExpression(expr.getSecondOperand());
         writer.append(')');
         if (expr.getLocation() != null) {
             popLocation();
@@ -790,7 +795,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
                 if (expr.getType() == OperationType.LONG) {
                     writer.appendFunction("Long_not").append("(");
                     precedence = Precedence.min();
-                    expr.getOperand().acceptVisitor(this);
+                    renderExpression(expr.getOperand());
                     writer.append(')');
                 } else {
                     if (outerPrecedence.ordinal() > Precedence.UNARY.ordinal()) {
@@ -798,7 +803,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
                     }
                     writer.append(expr.getType() == null ? "!" : "~");
                     precedence = Precedence.UNARY;
-                    expr.getOperand().acceptVisitor(this);
+                    renderExpression(expr.getOperand());
                     if (outerPrecedence.ordinal() > Precedence.UNARY.ordinal()) {
                         writer.append(')');
                     }
@@ -809,7 +814,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
                 if (expr.getType() == OperationType.LONG) {
                     writer.appendFunction("Long_neg").append("(");
                     precedence = Precedence.min();
-                    expr.getOperand().acceptVisitor(this);
+                    renderExpression(expr.getOperand());
                     writer.append(')');
                 } else if (expr.getType() == OperationType.INT) {
                     if (outerPrecedence.ordinal() > Precedence.BITWISE_OR.ordinal()) {
@@ -817,7 +822,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
                     }
                     writer.append(" -");
                     precedence = Precedence.UNARY;
-                    expr.getOperand().acceptVisitor(this);
+                    renderExpression(expr.getOperand());
                     writer.ws().append("|").ws();
                     writer.append("0");
                     if (outerPrecedence.ordinal() > Precedence.BITWISE_OR.ordinal()) {
@@ -829,7 +834,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
                     }
                     writer.append(" -");
                     precedence = Precedence.UNARY;
-                    expr.getOperand().acceptVisitor(this);
+                    renderExpression(expr.getOperand());
                     if (outerPrecedence.ordinal() > Precedence.UNARY.ordinal()) {
                         writer.append(')');
                     }
@@ -837,7 +842,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
                 break;
             case LENGTH:
                 precedence = Precedence.MEMBER_ACCESS;
-                expr.getOperand().acceptVisitor(this);
+                renderExpression(expr.getOperand());
                 writer.append(".length");
                 break;
             case INT_TO_BYTE:
@@ -845,7 +850,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
                     writer.append('(');
                 }
                 precedence = Precedence.BITWISE_SHIFT;
-                expr.getOperand().acceptVisitor(this);
+                renderExpression(expr.getOperand());
                 writer.ws().append("<<").ws().append("24").ws().append(">>").ws().append("24");
                 if (outerPrecedence.ordinal() > Precedence.BITWISE_SHIFT.ordinal()) {
                     writer.append(')');
@@ -856,7 +861,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
                     writer.append('(');
                 }
                 precedence = Precedence.BITWISE_SHIFT;
-                expr.getOperand().acceptVisitor(this);
+                renderExpression(expr.getOperand());
                 writer.ws().append("<<").ws().append("16").ws().append(">>").ws().append("16");
                 if (outerPrecedence.ordinal() > Precedence.BITWISE_SHIFT.ordinal()) {
                     writer.append(')');
@@ -867,7 +872,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
                     writer.append('(');
                 }
                 precedence = Precedence.BITWISE_AND;
-                expr.getOperand().acceptVisitor(this);
+                renderExpression(expr.getOperand());
                 writer.ws().append("&").ws().append("65535");
                 if (outerPrecedence.ordinal() > Precedence.BITWISE_AND.ordinal()) {
                     writer.append(')');
@@ -879,7 +884,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
                 }
                 writer.appendFunction("$rt_nullCheck").append("(");
                 precedence = Precedence.min();
-                expr.getOperand().acceptVisitor(this);
+                renderExpression(expr.getOperand());
                 writer.append(')');
                 if (outerPrecedence.ordinal() > Precedence.FUNCTION_CALL.ordinal()) {
                     writer.append(')');
@@ -905,7 +910,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
             }
             writer.append("(");
             precedence = Precedence.min();
-            expr.getValue().acceptVisitor(this);
+            renderExpression(expr.getValue());
             writer.append(",").ws();
             RenderingUtil.typeToClsString(writer, expr.getTarget());
             writer.append(")");
@@ -913,7 +918,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
                 popLocation();
             }
         } else {
-            expr.getValue().acceptVisitor(this);
+            renderExpression(expr.getValue());
         }
     }
 
@@ -936,10 +941,10 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
                 if (expr.getTarget() == OperationType.LONG) {
                     writer.appendFunction("Long_fromInt").append("(");
                     precedence = Precedence.min();
-                    expr.getValue().acceptVisitor(this);
+                    renderExpression(expr.getValue());
                     writer.append(')');
                 } else {
-                    expr.getValue().acceptVisitor(this);
+                    renderExpression(expr.getValue());
                 }
                 break;
             case LONG:
@@ -949,11 +954,11 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
                         Expr longShifted = extractLongRightShiftedBy32(expr.getValue());
                         if (longShifted != null) {
                             writer.appendFunction("Long_hi").append("(");
-                            longShifted.acceptVisitor(this);
+                            renderExpression(longShifted);
                             writer.append(")");
                         } else {
                             writer.appendFunction("Long_lo").append("(");
-                            expr.getValue().acceptVisitor(this);
+                            renderExpression(expr.getValue());
                             writer.append(")");
                         }
                         break;
@@ -961,11 +966,11 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
                     case DOUBLE:
                         writer.appendFunction("Long_toNumber").append("(");
                         precedence = Precedence.min();
-                        expr.getValue().acceptVisitor(this);
+                        renderExpression(expr.getValue());
                         writer.append(')');
                         break;
                     default:
-                        expr.getValue().acceptVisitor(this);
+                        renderExpression(expr.getValue());
                 }
                 break;
             case FLOAT:
@@ -974,15 +979,15 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
                     case LONG:
                         writer.appendFunction("Long_fromNumber").append("(");
                         precedence = Precedence.min();
-                        expr.getValue().acceptVisitor(this);
+                        renderExpression(expr.getValue());
                         writer.append(')');
                         break;
                     case INT:
-                        visitBinary(BinaryOperation.BITWISE_OR, "|", () -> expr.getValue().acceptVisitor(this),
+                        visitBinary(BinaryOperation.BITWISE_OR, "|", () -> renderExpression(expr.getValue()),
                                 () -> writer.append("0"));
                         break;
                     default:
-                        expr.getValue().acceptVisitor(this);
+                        renderExpression(expr.getValue());
                 }
                 break;
         }
@@ -1028,13 +1033,13 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
         }
 
         precedence = Precedence.CONDITIONAL.next();
-        expr.getCondition().acceptVisitor(this);
+        renderExpression(expr.getCondition());
         writer.ws().append("?").ws();
         precedence = Precedence.CONDITIONAL.next();
-        expr.getConsequent().acceptVisitor(this);
+        renderExpression(expr.getConsequent());
         writer.ws().append(":").ws();
         precedence = Precedence.CONDITIONAL;
-        expr.getAlternative().acceptVisitor(this);
+        renderExpression(expr.getAlternative());
 
         if (outerPrecedence.ordinal() > Precedence.CONDITIONAL.ordinal()) {
             writer.append(')');
@@ -1073,10 +1078,10 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
             pushLocation(expr.getLocation());
         }
         precedence = Precedence.MEMBER_ACCESS;
-        expr.getArray().acceptVisitor(this);
+        renderExpression(expr.getArray());
         writer.append('[');
         precedence = Precedence.min();
-        expr.getIndex().acceptVisitor(this);
+        renderExpression(expr.getIndex());
         writer.append(']');
         if (expr.getLocation() != null) {
             popLocation();
@@ -1089,7 +1094,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
             pushLocation(expr.getLocation());
         }
         precedence = Precedence.MEMBER_ACCESS;
-        expr.getArray().acceptVisitor(this);
+        renderExpression(expr.getArray());
         writer.append(".data");
         if (expr.getLocation() != null) {
             popLocation();
@@ -1112,7 +1117,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
 
             if (expr.getType() == InvocationType.DYNAMIC) {
                 precedence = Precedence.MEMBER_ACCESS;
-                expr.getArguments().get(0).acceptVisitor(this);
+                renderExpression(expr.getArguments().get(0));
             }
             MethodReference method = expr.getMethod();
             String name = naming.instanceMethodName(method.getDescriptor());
@@ -1124,17 +1129,17 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
                             writer.append(",").ws();
                         }
                         precedence = Precedence.min();
-                        expr.getArguments().get(i).acceptVisitor(this);
+                        renderExpression(expr.getArguments().get(i));
                     }
                     break;
                 case SPECIAL:
                     writer.appendMethod(method).append("(");
                     precedence = Precedence.min();
-                    expr.getArguments().get(0).acceptVisitor(this);
+                    renderExpression(expr.getArguments().get(0));
                     for (int i = 1; i < expr.getArguments().size(); ++i) {
                         writer.append(",").ws();
                         precedence = Precedence.min();
-                        expr.getArguments().get(i).acceptVisitor(this);
+                        renderExpression(expr.getArguments().get(i));
                     }
                     break;
                 case DYNAMIC:
@@ -1144,7 +1149,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
                             writer.append(",").ws();
                         }
                         precedence = Precedence.min();
-                        expr.getArguments().get(i).acceptVisitor(this);
+                        renderExpression(expr.getArguments().get(i));
                     }
                     break;
                 case CONSTRUCTOR:
@@ -1154,7 +1159,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
                             writer.append(",").ws();
                         }
                         precedence = Precedence.min();
-                        expr.getArguments().get(i).acceptVisitor(this);
+                        renderExpression(expr.getArguments().get(i));
                     }
                     break;
             }
@@ -1177,7 +1182,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
         precedence = Precedence.MEMBER_ACCESS;
 
         if (expr.getQualified() != null) {
-            expr.getQualified().acceptVisitor(this);
+            renderExpression(expr.getQualified());
             writer.append('.').appendField(expr.getField());
         } else {
             writer.appendStaticField(expr.getField());
@@ -1222,49 +1227,49 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
                 case BOOLEAN:
                     writer.appendFunction("$rt_createBooleanArray").append("(");
                     precedence = Precedence.min();
-                    expr.getLength().acceptVisitor(this);
+                    renderExpression(expr.getLength());
                     writer.append(")");
                     break;
                 case BYTE:
                     writer.appendFunction("$rt_createByteArray").append("(");
                     precedence = Precedence.min();
-                    expr.getLength().acceptVisitor(this);
+                    renderExpression(expr.getLength());
                     writer.append(")");
                     break;
                 case SHORT:
                     writer.appendFunction("$rt_createShortArray").append("(");
                     precedence = Precedence.min();
-                    expr.getLength().acceptVisitor(this);
+                    renderExpression(expr.getLength());
                     writer.append(")");
                     break;
                 case INTEGER:
                     writer.appendFunction("$rt_createIntArray").append("(");
                     precedence = Precedence.min();
-                    expr.getLength().acceptVisitor(this);
+                    renderExpression(expr.getLength());
                     writer.append(")");
                     break;
                 case LONG:
                     writer.appendFunction("$rt_createLongArray").append("(");
                     precedence = Precedence.min();
-                    expr.getLength().acceptVisitor(this);
+                    renderExpression(expr.getLength());
                     writer.append(")");
                     break;
                 case FLOAT:
                     writer.appendFunction("$rt_createFloatArray").append("(");
                     precedence = Precedence.min();
-                    expr.getLength().acceptVisitor(this);
+                    renderExpression(expr.getLength());
                     writer.append(")");
                     break;
                 case DOUBLE:
                     writer.appendFunction("$rt_createDoubleArray").append("(");
                     precedence = Precedence.min();
-                    expr.getLength().acceptVisitor(this);
+                    renderExpression(expr.getLength());
                     writer.append(")");
                     break;
                 case CHARACTER:
                     writer.appendFunction("$rt_createCharArray").append("(");
                     precedence = Precedence.min();
-                    expr.getLength().acceptVisitor(this);
+                    renderExpression(expr.getLength());
                     writer.append(")");
                     break;
             }
@@ -1273,7 +1278,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
             RenderingUtil.typeToClsString(writer, expr.getType());
             writer.append(",").ws();
             precedence = Precedence.min();
-            expr.getLength().acceptVisitor(this);
+            renderExpression(expr.getLength());
             writer.append(")");
         }
         if (expr.getLocation() != null) {
@@ -1338,7 +1343,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
             }
             first = false;
             precedence = Precedence.min();
-            element.acceptVisitor(this);
+            renderExpression(element);
         }
     }
 
@@ -1393,7 +1398,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
             }
             first = false;
             precedence = Precedence.min();
-            dimension.acceptVisitor(this);
+            renderExpression(dimension);
         }
         writer.append("])");
         if (expr.getLocation() != null) {
@@ -1412,7 +1417,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
                 writer.append('(');
             }
             precedence = Precedence.CONDITIONAL.next();
-            expr.getExpr().acceptVisitor(this);
+            renderExpression(expr.getExpr());
             writer.append(" instanceof ");
             RenderingUtil.typeToClsString(writer, expr.getType());
             if (needsParentheses) {
@@ -1421,7 +1426,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
         } else {
             writer.appendFunction("$rt_isInstance").append("(");
             precedence = Precedence.min();
-            expr.getExpr().acceptVisitor(this);
+            renderExpression(expr.getExpr());
             writer.append(",").ws();
             RenderingUtil.typeToClsString(writer, expr.getType());
             writer.append(")");
@@ -1524,13 +1529,13 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
         if (async) {
             writer.appendMethod(NameFrequencyEstimator.MONITOR_ENTER_METHOD).append("(");
             precedence = Precedence.min();
-            statement.getObjectRef().acceptVisitor(this);
+            renderExpression(statement.getObjectRef());
             writer.append(");").softNewLine();
             emitSuspendChecker();
         } else {
             writer.appendMethod(NameFrequencyEstimator.MONITOR_ENTER_SYNC_METHOD).append('(');
             precedence = Precedence.min();
-            statement.getObjectRef().acceptVisitor(this);
+            renderExpression(statement.getObjectRef());
             writer.append(");").softNewLine();
         }
     }
@@ -1547,12 +1552,12 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
         if (async) {
             writer.appendMethod(NameFrequencyEstimator.MONITOR_EXIT_METHOD).append("(");
             precedence = Precedence.min();
-            statement.getObjectRef().acceptVisitor(this);
+            renderExpression(statement.getObjectRef());
             writer.append(");").softNewLine();
         } else {
             writer.appendMethod(NameFrequencyEstimator.MONITOR_EXIT_SYNC_METHOD).append('(');
             precedence = Precedence.min();
-            statement.getObjectRef().acceptVisitor(this);
+            renderExpression(statement.getObjectRef());
             writer.append(");").softNewLine();
         }
     }
@@ -1571,11 +1576,11 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
             writer.appendFunction("$rt_checkLowerBound").append("(");
         }
 
-        expr.getIndex().acceptVisitor(this);
+        renderExpression(expr.getIndex());
 
         if (expr.getArray() != null) {
             writer.append(",").ws();
-            expr.getArray().acceptVisitor(this);
+            renderExpression(expr.getArray());
         }
 
         if (expr.getArray() != null || expr.isLower()) {
@@ -1585,6 +1590,31 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
         if (expr.getLocation() != null) {
             popLocation();
         }
+    }
+
+    private void emitCoverageStatement(TextLocation location) {
+        var coverage = context.getCoverage();
+        if (coverage != null && coverage.accepts(location)) {
+            coverage.emitProbe(writer, location);
+            writer.append(';').softNewLine();
+        }
+    }
+
+    private void renderExpression(Expr expr) {
+        var coverage = context.getCoverage();
+        if (coverage == null || !coverage.accepts(expr.getLocation())) {
+            expr.acceptVisitor(this);
+            return;
+        }
+        // Keep the probe inside the expression: a short-circuited operand must not be counted.
+        var outerPrecedence = precedence;
+        writer.append('(');
+        coverage.emitProbe(writer, expr.getLocation());
+        writer.append(',').ws();
+        precedence = Precedence.COMMA;
+        expr.acceptVisitor(this);
+        writer.append(')');
+        precedence = outerPrecedence;
     }
 
     private class InjectorContextImpl implements InjectorContext {
@@ -1633,7 +1663,7 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
         @Override
         public void writeExpr(Expr expr, Precedence precedence) {
             StatementRenderer.this.precedence = precedence;
-            expr.acceptVisitor(StatementRenderer.this);
+            renderExpression(expr);
         }
 
         @Override

@@ -26,6 +26,7 @@ import java.util.Properties;
 import java.util.function.Predicate;
 import org.teavm.backend.javascript.codegen.NamingStrategy;
 import org.teavm.backend.javascript.codegen.SourceWriter;
+import org.teavm.backend.javascript.coverage.JavaScriptCoverage;
 import org.teavm.backend.javascript.spi.InjectedBy;
 import org.teavm.backend.javascript.spi.Injector;
 import org.teavm.common.ServiceRepository;
@@ -61,6 +62,7 @@ public abstract class RenderingContext {
     private boolean minifying;
     private ClassInitializerInfo classInitializerInfo;
     private boolean strict;
+    private JavaScriptCoverage coverage;
 
     public RenderingContext(DebugInformationEmitter debugEmitter,
             ClassReaderSource initialClassSource, ListableClassReaderSource classSource,
@@ -84,6 +86,14 @@ public abstract class RenderingContext {
         this.forcedFunctionPredicate = forcedFunctionPredicate;
         this.classInitializerInfo = classInitializerInfo;
         this.strict = strict;
+    }
+
+    public JavaScriptCoverage getCoverage() {
+        return coverage;
+    }
+
+    public void setCoverage(JavaScriptCoverage coverage) {
+        this.coverage = coverage;
     }
 
     public ClassReaderSource getInitialClassSource() {

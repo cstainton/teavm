@@ -47,6 +47,7 @@ import org.teavm.backend.javascript.codegen.OutputSourceWriterBuilder;
 import org.teavm.backend.javascript.codegen.RememberedSource;
 import org.teavm.backend.javascript.codegen.RememberingSourceWriter;
 import org.teavm.backend.javascript.codegen.SourceWriter;
+import org.teavm.backend.javascript.coverage.JavaScriptCoverage;
 import org.teavm.backend.javascript.intrinsics.ref.ReferenceQueueGenerator;
 import org.teavm.backend.javascript.intrinsics.ref.ReferenceQueueTransformer;
 import org.teavm.backend.javascript.intrinsics.ref.WeakReferenceDependencyListener;
@@ -127,6 +128,8 @@ public class JavaScriptTarget implements TeaVMTarget, TeaVMJavaScriptHost {
     private final Map<MethodReference, Injector> methodInjectors = new HashMap<>();
     private final List<Function<ProviderContext, Generator>> generatorProviders = new ArrayList<>();
     private final List<Function<ProviderContext, Injector>> injectorProviders = new ArrayList<>();
+    private JavaScriptCoverage coverage;
+
     private final List<RendererListener> rendererListeners = new ArrayList<>();
     private DebugInformationEmitter debugEmitter;
     private MethodNodeCache astCache = EmptyMethodNodeCache.INSTANCE;
@@ -144,6 +147,11 @@ public class JavaScriptTarget implements TeaVMTarget, TeaVMJavaScriptHost {
 
     private ReflectionDependencyListener reflection;
 
+    /** Enables source line coverage for subsequent builds, or disables it when null. */
+    public void setCoverage(JavaScriptCoverage coverage) {
+        this.coverage = coverage;
+    }
+
     @Override
     public List<ClassHolderTransformer> getTransformers() {
         return List.of(
@@ -154,7 +162,20 @@ public class JavaScriptTarget implements TeaVMTarget, TeaVMJavaScriptHost {
 
     @Override
     public List<DependencyListener> getDependencyListeners() {
-        return Collections.emptyList();
+        if (coverage == null) {
+            return Collections.emptyList();
+        }
+        return List.of(new AbstractDependencyListener() {
+            @Override
+            public void started(DependencyAgent agent) {
+                coverage.clear();
+            }
+
+            @Override
+            public void classReached(DependencyAgent agent, String className) {
+                coverage.examine(agent.getClassSource().get(className));
+            }
+        });
     }
 
     @Override
@@ -350,6 +371,12 @@ public class JavaScriptTarget implements TeaVMTarget, TeaVMJavaScriptHost {
         try (OutputStream output = target.createResource(outputName);
                 Writer writer = new OutputStreamWriter(output, StandardCharsets.UTF_8)) {
             emit(classes, writer, target);
+            if (coverage != null && !controller.wasCancelled()) {
+                try (var inventory = new OutputStreamWriter(target.createResource(outputName + ".coverage.xml"),
+                        StandardCharsets.UTF_8)) {
+                    coverage.writeInventory(inventory);
+                }
+            }
         } catch (IOException e) {
             throw new RenderingException(e);
         }
@@ -398,6 +425,7 @@ public class JavaScriptTarget implements TeaVMTarget, TeaVMJavaScriptHost {
             }
         };
         renderingContext.setMinifying(obfuscated);
+        renderingContext.setCoverage(coverage);
         new ReflectionIntrinsics(methodInjectors, methodGenerators, injectorProviders, classes, reflection,
                 controller.getDependencyInfo()).apply();
 
@@ -486,6 +514,9 @@ public class JavaScriptTarget implements TeaVMTarget, TeaVMJavaScriptHost {
         }
 
         int start = sourceWriter.getOffset();
+        if (coverage != null) {
+            coverage.emitInitialization(sourceWriter);
+        }
         runtime.write(sourceWriter, 0);
         declarations.write(sourceWriter, 0);
         metadata.write(sourceWriter, 0);
