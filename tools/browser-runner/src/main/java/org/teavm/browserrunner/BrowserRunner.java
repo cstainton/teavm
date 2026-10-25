@@ -33,6 +33,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -41,6 +42,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import org.eclipse.jetty.ee10.servlet.ServletContextHandler;
 import org.eclipse.jetty.ee10.servlet.ServletHolder;
@@ -161,6 +163,7 @@ public class BrowserRunner {
 
     static class CallbackWrapper  {
         private final CountDownLatch latch;
+        Consumer<Map<String, Map<Integer, Boolean>>> coverageConsumer;
         volatile Throwable error;
         volatile boolean shouldRepeat;
 
@@ -204,6 +207,7 @@ public class BrowserRunner {
         var latch = new CountDownLatch(1);
 
         var callbackWrapper = new CallbackWrapper(latch);
+        callbackWrapper.coverageConsumer = run.getCoverageConsumer();
         awaitingRuns.put(id, callbackWrapper);
 
         var nf = objectMapper.getNodeFactory();
@@ -439,6 +443,14 @@ public class BrowserRunner {
                 }
             }
 
+            if (run.coverageConsumer != null) {
+                try {
+                    run.coverageConsumer.accept(readCoverage(resultNode.get("coverage")));
+                } catch (RuntimeException e) {
+                    run.error(e);
+                    return;
+                }
+            }
             String status = resultNode.get("status").asText();
             if (status.equals("OK")) {
                 run.complete();
@@ -446,6 +458,30 @@ public class BrowserRunner {
                 run.error(new RuntimeException(resultNode.get("errorMessage").asText()));
             }
         }
+    }
+
+    static Map<String, Map<Integer, Boolean>> readCoverage(JsonNode node) {
+        if (node == null || !node.isObject()) {
+            throw new IllegalArgumentException("Browser returned no coverage data for an instrumented test");
+        }
+        var result = new TreeMap<String, Map<Integer, Boolean>>();
+        for (var file : node.properties()) {
+            if (!file.getValue().isObject()) {
+                throw new IllegalArgumentException("Invalid coverage file: " + file.getKey());
+            }
+            var lines = new TreeMap<Integer, Boolean>();
+            for (var line : file.getValue().properties()) {
+                int number = Integer.parseInt(line.getKey());
+                var hit = line.getValue();
+                if (number <= 0 || !hit.isIntegralNumber() || !hit.canConvertToInt()
+                        || (hit.intValue() != 0 && hit.intValue() != 1)) {
+                    throw new IllegalArgumentException("Invalid coverage line: " + line.getKey());
+                }
+                lines.put(number, hit.intValue() == 1);
+            }
+            result.put(file.getKey(), lines);
+        }
+        return result;
     }
 
     public static Process customBrowser(BrowserRunParams runParams) {

@@ -30,6 +30,11 @@ import org.teavm.browserrunner.BrowserRunner;
 class BrowserRunStrategy implements TestRunStrategy {
     private File baseDir;
     private BrowserRunner runner;
+    private CoverageReport coverageReport;
+
+    void setCoverageReport(CoverageReport coverageReport) {
+        this.coverageReport = coverageReport;
+    }
 
     BrowserRunStrategy(File baseDir, String type, Function<BrowserRunParams, Process> browserRunner) {
         this.baseDir = baseDir;
@@ -60,6 +65,9 @@ class BrowserRunStrategy implements TestRunStrategy {
                 true
         );
 
+        if (coverageReport != null) {
+            descriptor.setCoverageConsumer(coverageReport::merge);
+        }
         runner.runTest(descriptor);
     }
 

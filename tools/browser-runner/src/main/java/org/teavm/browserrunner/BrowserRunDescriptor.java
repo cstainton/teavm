@@ -16,6 +16,8 @@
 package org.teavm.browserrunner;
 
 import java.util.Collection;
+import java.util.Map;
+import java.util.function.Consumer;
 
 public class BrowserRunDescriptor {
     private final String name;
@@ -24,6 +26,7 @@ public class BrowserRunDescriptor {
     private final Collection<String> additionalFiles;
     private final String argument;
     private final boolean cached;
+    private Consumer<Map<String, Map<Integer, Boolean>>> coverageConsumer;
 
     public BrowserRunDescriptor(String name, String testPath, boolean module, Collection<String> additionalFiles,
             String argument, boolean cached) {
@@ -33,6 +36,14 @@ public class BrowserRunDescriptor {
         this.additionalFiles = additionalFiles;
         this.argument = argument;
         this.cached = cached;
+    }
+
+    public Consumer<Map<String, Map<Integer, Boolean>>> getCoverageConsumer() {
+        return coverageConsumer;
+    }
+
+    public void setCoverageConsumer(Consumer<Map<String, Map<Integer, Boolean>>> coverageConsumer) {
+        this.coverageConsumer = coverageConsumer;
     }
 
     public String getName() {

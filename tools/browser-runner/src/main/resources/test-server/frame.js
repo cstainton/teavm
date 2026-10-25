@@ -275,6 +275,11 @@ function start() {
 let log = [];
 
 function wrapResponse(response) {
+    // Snapshot after async completion, including failures. Cached tests retain class-init hits;
+    // the host merges cumulative snapshots with OR rather than interpreting them as counts.
+    if (globalThis.__teavmCoverage__) {
+        response.coverage = globalThis.__teavmCoverage__;
+    }
     if (log.length > 0) {
         response.log = log;
         log = [];

@@ -23,6 +23,7 @@ description = "Test runner for JUnit and TestNG annotations"
 
 
 dependencies {
+    testImplementation(libs.junit)
     compileOnly(libs.junit)
     compileOnly(libs.testng)
     compileOnly(project(":jso:core"))

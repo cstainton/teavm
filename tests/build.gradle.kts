@@ -76,6 +76,8 @@ tasks.test {
     systemProperty("teavm.junit.target", layout.buildDirectory.dir("teavm-tests").get().asFile.absolutePath)
     val browser = providers.gradleProperty("teavm.tests.browser").orElse("browser-chrome").get()
 
+    systemProperty("teavm.junit.js.coverage", providers.gradleProperty("teavm.tests.coverage")
+            .orElse("false").get())
     systemProperty("teavm.junit.js", providers.gradleProperty("teavm.tests.js").orElse("true").get())
     systemProperty("teavm.junit.js.runner", browser)
     systemProperty("teavm.junit.minified", providers.gradleProperty("teavm.tests.minified").orElse("true").get())

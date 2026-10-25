@@ -17,6 +17,7 @@ package org.teavm.junit;
 
 final class PropertyNames {
     static final String PATH_PARAM = "teavm.junit.target";
+    static final String COVERAGE = "teavm.junit.js.coverage";
     static final String JS_RUNNER = "teavm.junit.js.runner";
     static final String WASM_RUNNER = "teavm.junit.wasm.runner";
     static final String JS_ENABLED = "teavm.junit.js";

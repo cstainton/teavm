@@ -35,6 +35,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.teavm.backend.javascript.JSModuleType;
 import org.teavm.backend.javascript.JavaScriptTarget;
+import org.teavm.backend.javascript.coverage.JavaScriptCoverage;
 import org.teavm.browserrunner.BrowserRunner;
 import org.teavm.debugging.information.DebugInformation;
 import org.teavm.debugging.information.DebugInformationBuilder;
@@ -44,6 +45,20 @@ import org.teavm.model.ReferenceCache;
 import org.teavm.vm.TeaVM;
 
 class JSPlatformSupport extends TestPlatformSupport<JavaScriptTarget> {
+    private CoverageReport coverageReport;
+
+    private CoverageReport coverageReport() {
+        if (!Boolean.getBoolean(PropertyNames.COVERAGE)) {
+            return null;
+        }
+        if (coverageReport == null) {
+            var output = java.nio.file.Path.of(System.getProperty(PropertyNames.PATH_PARAM), "coverage",
+                    "sonar-" + ProcessHandle.current().pid() + ".xml");
+            coverageReport = new CoverageReport(System.getProperty(PropertyNames.SOURCE_DIRS), output);
+        }
+        return coverageReport;
+    }
+
     JSPlatformSupport(ClassHolderSource classSource, ReferenceCache referenceCache) {
         super(classSource, referenceCache);
     }
@@ -51,9 +66,12 @@ class JSPlatformSupport extends TestPlatformSupport<JavaScriptTarget> {
     @Override
     TestRunStrategy createRunStrategy(File outputDir) {
         var runStrategyName = System.getProperty(JS_RUNNER);
-        return runStrategyName != null
-                ? new BrowserRunStrategy(outputDir, "JAVASCRIPT", BrowserRunner.pickBrowser(runStrategyName))
-                : null;
+        if (runStrategyName == null) {
+            return null;
+        }
+        var strategy = new BrowserRunStrategy(outputDir, "JAVASCRIPT", BrowserRunner.pickBrowser(runStrategyName));
+        strategy.setCoverageReport(coverageReport());
+        return strategy;
     }
 
     @Override
@@ -94,9 +112,12 @@ class JSPlatformSupport extends TestPlatformSupport<JavaScriptTarget> {
             TeaVMTestConfiguration<JavaScriptTarget> configuration, File path, AnnotatedElement element) {
         boolean decodeStack = Boolean.parseBoolean(System.getProperty(JS_DECODE_STACK, "true"));
         var debugEmitter = new DebugInformationBuilder(new ReferenceCache());
+        var report = coverageReport();
+        var coverage = report != null ? new JavaScriptCoverage(report::includes) : null;
         Supplier<JavaScriptTarget> targetSupplier = () -> {
             JavaScriptTarget target = new JavaScriptTarget();
             target.setStrict(true);
+            target.setCoverage(coverage);
             if (decodeStack) {
                 target.setDebugEmitter(debugEmitter);
                 target.setStackTraceIncluded(true);
@@ -130,8 +151,17 @@ class JSPlatformSupport extends TestPlatformSupport<JavaScriptTarget> {
                 }
             };
         }
+        var debugPostBuild = postBuild;
+        CompilePostProcessor reportPostBuild = (vm, file) -> {
+            if (coverage != null) {
+                report.include(coverage);
+            }
+            if (debugPostBuild != null) {
+                debugPostBuild.process(vm, file);
+            }
+        };
         return compile(configuration, targetSupplier, TestJsEntryPoint.class.getName(), path, ".js",
-                postBuild, additionalProcessing, baseName);
+                reportPostBuild, additionalProcessing, baseName);
     }
 
     private boolean isModule(AnnotatedElement element) {
